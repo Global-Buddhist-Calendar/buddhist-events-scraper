@@ -758,6 +758,771 @@ def scrape_bswa(known):
         try_add(ev, known)
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  ADDITIONAL SCRAPERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 19. FPMT Global Retreat Schedule ─────────────────────────────────────────
+def scrape_fpmt(known):
+    print("\n── FPMT Global Retreats ──")
+    html = fetch("https://fpmt.org/centers/retreat/schedule/")
+    if not html:
+        return
+    # FPMT lists retreats in a structured format: date, title, centre
+    blocks = re.findall(
+        r'(\w+ \d{1,2}[-–]\d{1,2},?\s+\d{4}|\w+ \d{1,2},?\s+\d{4})\s*([^\n<]{10,120}?)(?:with|led by)?\s*(?:[^\n<]{0,60}?)([A-Za-z\s,]+(?:Centre|Center|Institute|Monastery)[^\n<]{0,60})',
+        html, re.IGNORECASE
+    )
+    # Simpler fallback: find all date+title patterns
+    entries = re.findall(
+        r'(\w+\s+\d{1,2}[-–]\d{1,2},?\s+\d{4})\s+([^\n<]{10,100})',
+        html, re.IGNORECASE
+    )
+    seen = set()
+    for date_raw, title in entries[:30]:
+        title = re.sub(r'\s+', ' ', title).strip().rstrip('.,')
+        if title in seen or len(title) < 8:
+            continue
+        seen.add(title)
+        d = parse_date_str(date_raw)
+        if not d or not future_date(d):
+            continue
+        # Try to detect location from title
+        loc = "Various locations"
+        cont = "Other"
+        for keyword, location, continent in [
+            ("Australia", "Australia", "Other"),
+            ("France", "France", "Europe"),
+            ("Spain", "Spain", "Europe"),
+            ("Italy", "Italy", "Europe"),
+            ("UK", "United Kingdom", "Europe"),
+            ("India", "India", "Asia"),
+            ("USA", "USA", "North America"),
+            ("Canada", "Canada", "North America"),
+        ]:
+            if keyword.lower() in title.lower():
+                loc = location
+                cont = continent
+                break
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location=loc, continent=cont,
+            school="Vajrayana", etype="Retreat",
+            description="Retreat organised by an FPMT centre worldwide.",
+            teacher=None, organization="FPMT",
+            source_url="https://fpmt.org/centers/retreat/schedule/",
+        )
+        try_add(ev, known)
+
+# ── 20. Chenrezig Institute (Australia) ──────────────────────────────────────
+def scrape_chenrezig(known):
+    print("\n── Chenrezig Institute ──")
+    html = fetch("https://www.chenrezig.com.au/programs/")
+    if not html:
+        html = fetch("https://www.chenrezig.com.au/retreats/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.chenrezig.com.au" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Eudlo, Queensland, Australia", continent="Other",
+            school="Vajrayana", etype="Retreat",
+            description="Retreat or programme at Chenrezig Institute, Queensland, Australia.",
+            teacher=None, organization="Chenrezig Institute",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 21. Southern Dharma Retreat Center ───────────────────────────────────────
+def scrape_southern_dharma(known):
+    print("\n── Southern Dharma Retreat Center ──")
+    html = fetch("https://southerndharma.org/retreat-schedule/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}\s*[-–]\s*\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://southerndharma.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Hot Springs, North Carolina, USA", continent="North America",
+            school="Theravada", etype="Retreat",
+            description="Insight meditation retreat at Southern Dharma Retreat Center, North Carolina.",
+            teacher=None, organization="Southern Dharma Retreat Center",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 22. Amaravati Buddhist Monastery ─────────────────────────────────────────
+def scrape_amaravati(known):
+    print("\n── Amaravati Buddhist Monastery ──")
+    html = fetch("https://www.amaravati.org/retreat-centre/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.amaravati.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Great Gaddesden, UK", continent="Europe",
+            school="Theravada", etype="Retreat",
+            description="Retreat at Amaravati Buddhist Monastery in the Thai Forest Tradition of Ajahn Chah.",
+            teacher=None, organization="Amaravati Buddhist Monastery",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 23. Kadampa Meditation Centre UK ─────────────────────────────────────────
+def scrape_kadampa(known):
+    print("\n── Kadampa (NKT-IKBU) ──")
+    html = fetch("https://kadampa.org/events")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://kadampa.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Various locations", continent="Other",
+            school="Vajrayana", etype="Teachings",
+            description="Teaching or festival in the New Kadampa Tradition (NKT-IKBU).",
+            teacher=None, organization="Kadampa (NKT-IKBU)",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 24. Vipassana Meditation (Dhamma.org) ────────────────────────────────────
+def scrape_dhamma(known):
+    print("\n── Dhamma.org (S.N. Goenka Vipassana) ──")
+    # Dhamma.org lists courses by country — scrape the global schedule page
+    html = fetch("https://www.dhamma.org/en/courses/search")
+    if not html:
+        html = fetch("https://www.dhamma.org/en-US/courses/search")
+    if not html:
+        return
+    # Look for course entries
+    entries = re.findall(
+        r'(\d{4}-\d{2}-\d{2})[^<]*</[^>]+>[^<]*<[^>]+>([^<]{5,80})',
+        html, re.IGNORECASE
+    )
+    seen = set()
+    for d, title in entries[:20]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        if not future_date(d):
+            continue
+        ev = make_event(
+            title="10-Day Vipassana Meditation Course – " + title,
+            date_str=d, end_date=None,
+            location="Various centres worldwide", continent="Other",
+            school="Theravada", etype="Meditation",
+            description="10-day silent Vipassana meditation course in the tradition of S.N. Goenka. Free of charge.",
+            teacher=None, organization="Dhamma.org (S.N. Goenka)",
+            source_url="https://www.dhamma.org/en/courses/search",
+        )
+        try_add(ev, known)
+
+# ── 25. Sravasti Abbey ───────────────────────────────────────────────────────
+def scrape_sravasti(known):
+    print("\n── Sravasti Abbey ──")
+    html = fetch("https://sravastiabbey.org/events/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*class="[^"]*entry-title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Newport, Washington, USA", continent="North America",
+            school="Mahayana", etype="Retreat",
+            description="Retreat or teaching at Sravasti Abbey, a Tibetan Buddhist monastery in Washington State.",
+            teacher="Venerable Thubten Chodron", organization="Sravasti Abbey",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 26. Deer Park Monastery (Plum Village USA) ────────────────────────────────
+def scrape_deer_park(known):
+    print("\n── Deer Park Monastery ──")
+    html = fetch("https://deerparkmonastery.org/retreats")
+    if not html:
+        html = fetch("https://deerparkmonastery.org/schedule")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://deerparkmonastery.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Escondido, California, USA", continent="North America",
+            school="Zen", etype="Retreat",
+            description="Retreat at Deer Park Monastery in the Plum Village tradition of Thich Nhat Hanh.",
+            teacher="Deer Park Monastics", organization="Deer Park Monastery",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 27. Insight Meditation Community of Washington ───────────────────────────
+def scrape_imcw(known):
+    print("\n── IMCW ──")
+    html = fetch("https://www.imcw.org/Retreats")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.imcw.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Washington, DC, USA", continent="North America",
+            school="Theravada", etype="Retreat",
+            description="Insight meditation retreat offered by the Insight Meditation Community of Washington.",
+            teacher=None, organization="IMCW",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 28. New York Zen Center for Contemplative Care ───────────────────────────
+def scrape_nyzcc(known):
+    print("\n── New York Zen Center ──")
+    html = fetch("https://zencare.org/programs/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:10]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://zencare.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="New York, USA", continent="North America",
+            school="Zen", etype="Teachings",
+            description="Programme at the New York Zen Center for Contemplative Care.",
+            teacher=None, organization="NY Zen Center for Contemplative Care",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 29. San Francisco Zen Center ─────────────────────────────────────────────
+def scrape_sfzc(known):
+    print("\n── San Francisco Zen Center ──")
+    html = fetch("https://www.sfzc.org/programs-retreats")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.sfzc.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="San Francisco, California, USA", continent="North America",
+            school="Zen", etype="Retreat",
+            description="Programme at San Francisco Zen Center in the Soto Zen tradition.",
+            teacher=None, organization="San Francisco Zen Center",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 30. Rochester Zen Center ─────────────────────────────────────────────────
+def scrape_rochester_zen(known):
+    print("\n── Rochester Zen Center ──")
+    html = fetch("https://rzc.org/schedule/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://rzc.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Rochester, New York, USA", continent="North America",
+            school="Zen", etype="Retreat",
+            description="Sesshin or programme at Rochester Zen Center in the Rinzai Zen tradition.",
+            teacher=None, organization="Rochester Zen Center",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 31. Tara Mandala Retreat Center ──────────────────────────────────────────
+def scrape_tara_mandala(known):
+    print("\n── Tara Mandala ──")
+    html = fetch("https://taramandala.org/programs/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://taramandala.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Pagosa Springs, Colorado, USA", continent="North America",
+            school="Vajrayana", etype="Retreat",
+            description="Retreat at Tara Mandala Retreat Center in the Tibetan Vajrayana tradition.",
+            teacher=None, organization="Tara Mandala",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 32. Kagyu Samye Ling (Scotland) ──────────────────────────────────────────
+def scrape_samye_ling(known):
+    print("\n── Kagyu Samye Ling ──")
+    html = fetch("https://www.samyeling.org/programme/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.samyeling.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Eskdalemuir, Scotland, UK", continent="Europe",
+            school="Vajrayana", etype="Retreat",
+            description="Retreat or teaching at Kagyu Samye Ling, Europe's first Tibetan Buddhist centre.",
+            teacher=None, organization="Kagyu Samye Ling",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 33. Rigpa International ───────────────────────────────────────────────────
+def scrape_rigpa(known):
+    print("\n── Rigpa International ──")
+    html = fetch("https://www.rigpa.org/events/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.rigpa.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Various locations", continent="Other",
+            school="Vajrayana", etype="Teachings",
+            description="Teaching or retreat by Rigpa International in the Nyingma tradition of Sogyal Rinpoche.",
+            teacher=None, organization="Rigpa International",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 34. Shambhala International ───────────────────────────────────────────────
+def scrape_shambhala(known):
+    print("\n── Shambhala ──")
+    html = fetch("https://shambhala.org/programs/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://shambhala.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Various locations", continent="Other",
+            school="Vajrayana", etype="Teachings",
+            description="Programme in the Shambhala Buddhist tradition founded by Chogyam Trungpa Rinpoche.",
+            teacher=None, organization="Shambhala",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 35. Thich Nhat Hanh European Institute (EIAB) ────────────────────────────
+def scrape_eiab(known):
+    print("\n── EIAB (European Institute of Applied Buddhism) ──")
+    html = fetch("https://eiab.eu/retreats/")
+    if not html:
+        html = fetch("https://eiab.eu/schedule/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://eiab.eu" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Waldbrol, Germany", continent="Europe",
+            school="Zen", etype="Retreat",
+            description="Retreat at the European Institute of Applied Buddhism in the Plum Village tradition.",
+            teacher="Plum Village Monastics", organization="EIAB",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 36. Dhammapadipa (European Vipassana) ────────────────────────────────────
+def scrape_dhammapadipa(known):
+    print("\n── Dhammapadipa (UK Vipassana) ──")
+    html = fetch("https://www.dhammapadipa.dhamma.org/en/courses/")
+    if not html:
+        return
+    entries = re.findall(
+        r'(\d{4}-\d{2}-\d{2})[^<]{0,50}([^<]{5,80})',
+        html, re.IGNORECASE
+    )
+    seen = set()
+    for d, title in entries[:15]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        if not future_date(d):
+            continue
+        ev = make_event(
+            title="10-Day Vipassana Course – Dhammapadipa " + d,
+            date_str=d, end_date=None,
+            location="Herefordshire, UK", continent="Europe",
+            school="Theravada", etype="Meditation",
+            description="10-day silent Vipassana meditation course at Dhammapadipa, UK, in the tradition of S.N. Goenka.",
+            teacher=None, organization="Dhammapadipa (Dhamma.org UK)",
+            source_url="https://www.dhammapadipa.dhamma.org/en/courses/",
+        )
+        try_add(ev, known)
+
+# ── 37. Bodhi College ────────────────────────────────────────────────────────
+def scrape_bodhi_college(known):
+    print("\n── Bodhi College ──")
+    html = fetch("https://bodhi.college/courses-retreats/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://bodhi.college" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Various locations, Europe", continent="Europe",
+            school="Theravada", etype="Teachings",
+            description="Course or retreat at Bodhi College, offering in-depth study and practice of the early Buddhist teachings.",
+            teacher=None, organization="Bodhi College",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 38. Barre Center for Buddhist Studies ────────────────────────────────────
+def scrape_bcbs(known):
+    print("\n── Barre Center for Buddhist Studies ──")
+    html = fetch("https://www.buddhistinquiry.org/programs/")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.buddhistinquiry.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Barre, Massachusetts, USA", continent="North America",
+            school="Theravada", etype="Teachings",
+            description="Study programme at the Barre Center for Buddhist Studies (BCBS).",
+            teacher=None, organization="Barre Center for Buddhist Studies",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 39. Sharpham Trust (UK) ───────────────────────────────────────────────────
+def scrape_sharpham(known):
+    print("\n── Sharpham Trust ──")
+    html = fetch("https://www.sharphamtrust.org/retreats")
+    if not html:
+        return
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:12]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        if not url.startswith("http"):
+            url = "https://www.sharphamtrust.org" + url
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Devon, UK", continent="Europe",
+            school="Theravada", etype="Retreat",
+            description="Retreat at Sharpham Trust in Devon, UK, offering Buddhist-inspired mindfulness retreats.",
+            teacher=None, organization="Sharpham Trust",
+            source_url=url,
+        )
+        try_add(ev, known)
+
+# ── 40. Garchen Institute – additional events ─────────────────────────────────
+def scrape_garchen_extra(known):
+    print("\n── Garchen Institute (extended) ──")
+    html = fetch("https://garchen.net/annual-events/")
+    if not html:
+        return
+    # Look for the detailed event blocks with specific format
+    # "EventName | Date Range | Teacher | Format"
+    blocks = re.findall(
+        r'\*([^|*\n]{5,100})\s*\|\s*([A-Za-z]+ \d{1,2}[^|]{0,30})\s*\|',
+        html, re.IGNORECASE
+    )
+    seen = set()
+    for title, date_raw in blocks:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(date_raw.strip())
+        if not d or not future_date(d):
+            continue
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Chino Valley, Arizona, USA", continent="North America",
+            school="Vajrayana", etype="Teachings",
+            description="Teaching or retreat at Garchen Buddhist Institute in the Drikung Kagyu tradition.",
+            teacher="H.E. Garchen Rinpoche", organization="Garchen Buddhist Institute",
+            source_url="https://garchen.net/annual-events/",
+        )
+        try_add(ev, known)
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -776,6 +1541,7 @@ def main():
 
     # Run all scrapers
     scrapers = [
+        # Original 18
         scrape_tushita,
         scrape_plum_village,
         scrape_gaia_house,
@@ -794,6 +1560,29 @@ def main():
         scrape_tibethaus,
         scrape_dhagpo,
         scrape_bswa,
+        # New scrapers
+        scrape_fpmt,
+        scrape_chenrezig,
+        scrape_southern_dharma,
+        scrape_amaravati,
+        scrape_kadampa,
+        scrape_dhamma,
+        scrape_sravasti,
+        scrape_deer_park,
+        scrape_imcw,
+        scrape_nyzcc,
+        scrape_sfzc,
+        scrape_rochester_zen,
+        scrape_tara_mandala,
+        scrape_samye_ling,
+        scrape_rigpa,
+        scrape_shambhala,
+        scrape_eiab,
+        scrape_dhammapadipa,
+        scrape_bodhi_college,
+        scrape_bcbs,
+        scrape_sharpham,
+        scrape_garchen_extra,
     ]
 
     for scraper in scrapers:
