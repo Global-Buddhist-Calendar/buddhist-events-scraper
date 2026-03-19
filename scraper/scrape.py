@@ -346,29 +346,37 @@ def scrape_spirit_rock(known):
 # ── 5. Insight Meditation Society (IMS) ───────────────────────────────────────
 def scrape_ims(known):
     print("\n── Insight Meditation Society ──")
-    html = fetch("https://www.dharma.org/retreats/schedules/retreat-center-schedule-2026/")
+    # dharma.org blocks scrapers — use the IMS online portal instead
+    html = fetch("https://ims.dharma.org/collections/all-programs")
     if not html:
-        html = fetch("https://www.dharma.org/retreats/schedules/")
+        html = fetch("https://ims.dharma.org/")
     if not html:
         return
-    # Look for retreat entries with dates
-    blocks = re.findall(r'<li[^>]*>(.*?)</li>', html, re.DOTALL | re.IGNORECASE)
-    for block in blocks:
-        title_m = re.search(r'<a[^>]*>([^<]{10,120})</a>', block, re.IGNORECASE)
-        date_m  = re.search(r'([A-Za-z]+ \d{1,2}[^<]{0,30}\d{4})', block)
-        if not title_m or not date_m:
+    items = re.findall(
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for url, title in items[:20]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
             continue
-        title = re.sub(r'\s+', ' ', title_m.group(1)).strip()
-        d = parse_date_str(date_m.group(1))
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
         if not d or not future_date(d):
             continue
+        if not url.startswith("http"):
+            url = "https://ims.dharma.org" + url
         ev = make_event(
             title=title, date_str=d, end_date=None,
             location="Barre, Massachusetts, USA", continent="North America",
             school="Theravada", etype="Retreat",
             description="Silent insight meditation retreat at the Insight Meditation Society.",
             teacher=None, organization="Insight Meditation Society",
-            source_url="https://www.dharma.org/retreats/schedules/",
+            source_url=url,
         )
         try_add(ev, known)
 
@@ -476,34 +484,8 @@ def scrape_cloud_mountain(known):
 # ── 9. Garchen Buddhist Institute ────────────────────────────────────────────
 def scrape_garchen(known):
     print("\n── Garchen Buddhist Institute ──")
-    html = fetch("https://garchen.net/annual-events/")
-    if not html:
-        return
-    items = re.findall(
-        r'<h\d[^>]*>\s*(?:<a[^>]*>)?([^<]{5,120})(?:</a>)?</h',
-        html, re.IGNORECASE
-    )
-    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for title in items[:15]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
-            continue
-        seen.add(title)
-        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-        date_idx += 1
-        if not d or not future_date(d):
-            continue
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Chino Valley, Arizona, USA", continent="North America",
-            school="Vajrayana", etype="Teachings",
-            description="Teaching or retreat at Garchen Buddhist Institute.",
-            teacher="H.E. Garchen Rinpoche", organization="Garchen Buddhist Institute",
-            source_url="https://garchen.net/annual-events/",
-        )
-        try_add(ev, known)
+    # garchen.net returns 403 — confirmed events handled by scrape_garchen_2026
+    pass
 
 # ── 10. Blue Cliff Monastery ──────────────────────────────────────────────────
 def scrape_blue_cliff(known):
@@ -543,7 +525,9 @@ def scrape_blue_cliff(known):
 # ── 11. Abhayagiri Buddhist Monastery ────────────────────────────────────────
 def scrape_abhayagiri(known):
     print("\n── Abhayagiri Buddhist Monastery ──")
-    html = fetch("https://www.abhayagiri.org/events")
+    html = fetch("https://www.abhayagiri.org/calendar")
+    if not html:
+        html = fetch("https://www.abhayagiri.org/")
     if not html:
         return
     items = re.findall(
@@ -715,7 +699,9 @@ def scrape_tibethaus(known):
         r'<h\d[^>]*>\s*(?:<a[^>]*href="([^"]*)"[^>]*>)?([^<]{5,120})(?:</a>)?</h',
         html, re.IGNORECASE
     )
-    dates = re.findall(r'(\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})', html)
+    # Only match proper German dates DD.MM.YYYY — exclude anything that
+    # looks like a version number or code (e.g. 88.02.2333)
+    dates = re.findall(r'\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b', html)
     date_idx = 0
     seen = set()
     for url, title in items[:15]:
@@ -723,16 +709,14 @@ def scrape_tibethaus(known):
         if title in seen or len(title) < 5:
             continue
         seen.add(title)
-        # Handle German date format DD.MM.YYYY
-        raw_d = dates[date_idx] if date_idx < len(dates) else None
-        date_idx += 1
         d = None
-        if raw_d:
-            m = re.match(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', raw_d)
-            if m:
-                d = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-            else:
-                d = parse_date_str(raw_d)
+        if date_idx < len(dates):
+            day, month, year = dates[date_idx]
+            date_idx += 1
+            day, month, year = int(day), int(month), int(year)
+            # Validate ranges strictly
+            if 1 <= day <= 31 and 1 <= month <= 12 and 2026 <= year <= 2030:
+                d = f"{year}-{month:02d}-{day:02d}"
         if not d or not future_date(d):
             continue
         source = url if url and url.startswith("http") else "https://www.tibethaus.com/en/"
@@ -781,14 +765,15 @@ def scrape_dhagpo(known):
 # ── 18. BSWA / Jhana Grove ────────────────────────────────────────────────────
 def scrape_bswa(known):
     print("\n── BSWA / Jhana Grove ──")
-    html = fetch("https://bswa.org/events/")
+    # bswa.org/events returns 403 — use the Jhana Grove bookings page instead
+    html = fetch("https://jgbookings.tidyhq.com/public/schedule/events")
     if not html:
         return
     items = re.findall(
-        r'<h\d[^>]*class="[^"]*entry-title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
         html, re.IGNORECASE
     )
-    dates = re.findall(r'([A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    dates = re.findall(r'([A-Za-z]+ \d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})', html)
     date_idx = 0
     seen = set()
     for url, title in items[:12]:
@@ -800,6 +785,8 @@ def scrape_bswa(known):
         date_idx += 1
         if not d or not future_date(d):
             continue
+        if not url.startswith("http"):
+            url = "https://jgbookings.tidyhq.com" + url
         ev = make_event(
             title=title, date_str=d, end_date=None,
             location="Serpentine, Western Australia", continent="Other",
@@ -4197,101 +4184,78 @@ def main():
         # Batch 2 (scrapers 19-40)
         scrape_fpmt,
         scrape_chenrezig,
+        # ── Working scrapers (confirmed from run log) ────────────────────────
+        # Batch 1 – original working set
+        scrape_tushita,
+        scrape_plum_village,
+        scrape_gaia_house,
+        scrape_spirit_rock,
+        scrape_ims,
+        scrape_throssel,
+        scrape_upaya,
+        scrape_cloud_mountain,
+        scrape_blue_cliff,
+        scrape_drala,
+        scrape_zmm,
+        scrape_irc,
+        scrape_mountain_cloud,
+        scrape_tibethaus,
+        scrape_dhagpo,
+        # Batch 2 – partially working
         scrape_southern_dharma,
         scrape_amaravati,
         scrape_kadampa,
-        scrape_dhamma,
         scrape_sravasti,
         scrape_deer_park,
-        scrape_imcw,
-        scrape_nyzcc,
-        scrape_sfzc,
-        scrape_rochester_zen,
-        scrape_tara_mandala,
-        scrape_samye_ling,
-        scrape_rigpa,
-        scrape_shambhala,
-        scrape_eiab,
-        scrape_dhammapadipa,
-        scrape_bodhi_college,
-        scrape_bcbs,
         scrape_sharpham,
-        scrape_garchen_extra,
-        # Batch 3 (scrapers 41-56)
+        scrape_tara_mandala,
+        scrape_shambhala,
+        # Batch 3 – working
         scrape_retreat_guru,
         scrape_dharma_drum,
         scrape_buddhist_centre,
         scrape_taraloka,
-        scrape_sumedharama,
-        scrape_aruna,
-        scrape_bhavana,
-        scrape_vipassana_hawaii,
-        scrape_ims_online,
-        scrape_pacific_hermitage,
         scrape_wat_metta,
-        scrape_wonderwell,
-        scrape_dhanakosa,
-        scrape_great_vow,
-        scrape_fgs,
         scrape_karma_choling,
         scrape_palyul,
-        # Batch 4 (scrapers 58-70)
+        # Batch 4 – hardcoded verified events (always work)
         scrape_garchen_2026,
         scrape_fpmt_schedule,
-        scrape_kalachakra_france,
         scrape_sravasti_extended,
         scrape_detong_ling,
         scrape_kadampa_australia,
-        scrape_avalokita,
-        scrape_son_ha,
-        scrape_dhanakosa_fixed,
-        scrape_cksl,
-        scrape_namo_buddha,
         scrape_suan_mokkh,
         scrape_kopan,
-        # Batch 5 (scrapers 71-80)
+        # Batch 5 – hardcoded verified events
         scrape_fpmt_confirmed,
         scrape_nilambe,
-        scrape_rockhill,
         scrape_bsv,
-        scrape_dromana,
-        scrape_sakyadhita,
         scrape_hsi_lai,
         scrape_deer_park_extended,
         scrape_buddhist_council_nsw,
         scrape_wat_pah_nanachat,
-        # Batch 6 (scrapers 81-95)
+        # Batch 6 – hardcoded verified events
         scrape_diamond_way,
         scrape_templestay_korea,
         scrape_more_buddhist_festivals,
         scrape_vipassana_dhamma_org,
-        scrape_international_meditation_centre,
-        scrape_wat_buddha_dhamma,
-        scrape_buddha_house_australia,
         scrape_bodhinyanarama_nz,
-        scrape_theravada_nz,
         scrape_latin_america_events,
-        scrape_nalanda_institute,
         scrape_karmapa_teachings,
-        scrape_insight_timer_events,
         scrape_tricycle_events,
-        scrape_lions_roar_events,
-        # Batch 7 (scrapers 96-110)
+        # Batch 7 – hardcoded verified events
         scrape_nan_tien,
         scrape_fo_guang_shan_intl,
         scrape_antaiji,
         scrape_eiheiji,
-        scrape_dairyuji,
         scrape_koyasan,
         scrape_africa_buddhist,
         scrape_dharmagiri,
-        scrape_brc_south_africa,
         scrape_middle_east_buddhist,
         scrape_plum_village_online,
         scrape_ims_online_extended,
         scrape_spirit_rock_extended,
         scrape_shambhala_mountain,
-        scrape_sakya_uk,
     ]
 
     for scraper in scrapers:
