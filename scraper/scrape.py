@@ -1607,40 +1607,8 @@ def scrape_dharma_drum(known):
     print("\n── Dharma Drum Retreat Center ──")
     # dharmadrumretreat.org blocks all requests — skip
     pass
-    items = re.findall(
-        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
-        html, re.IGNORECASE
-    )
-    dates = re.findall(r'(\d{1,2}/\d{1,2}/\d{4}|\w+ \d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for url, title in items[:20]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
-            continue
-        seen.add(title)
-        raw_d = dates[date_idx] if date_idx < len(dates) else None
-        date_idx += 1
-        d = None
-        if raw_d:
-            m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', raw_d)
-            if m:
-                d = f"{m.group(3)}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
-            else:
-                d = parse_date_str(raw_d)
-        if not d or not future_date(d):
-            continue
-        if not url.startswith("http"):
-            url = "https://dharmadrumretreat.org" + url
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Pine Bush, New York, USA", continent="North America",
-            school="Zen", etype="Retreat",
-            description="Chan/Zen meditation retreat at Dharma Drum Retreat Center in the Chinese Chan tradition.",
-            teacher=None, organization="Dharma Drum Retreat Center",
-            source_url=url,
-        )
-        try_add(ev, known)
+
+
 
 # ── 43. The Buddhist Centre (Triratna) ───────────────────────────────────────
 def scrape_buddhist_centre(known):
