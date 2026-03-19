@@ -1605,10 +1605,8 @@ def scrape_palyul(known):
 # ── 42. Dharma Drum Retreat Center ───────────────────────────────────────────
 def scrape_dharma_drum(known):
     print("\n── Dharma Drum Retreat Center ──")
-    # /events returns 403 — try main site homepage
-    html = fetch("https://dharmadrumretreat.org/")
-    if not html:
-        return
+    # dharmadrumretreat.org blocks all requests — skip
+    pass
     items = re.findall(
         r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
         html, re.IGNORECASE
@@ -3428,9 +3426,7 @@ def scrape_nalanda_institute(known):
 # ── 92. 17th Karmapa Teachings ────────────────────────────────────────────────
 def scrape_karmapa_teachings(known):
     print("\n── 17th Karmapa Teachings ──")
-    html = fetch("https://kagyuoffice.org/events/")
-    if not html:
-        html = fetch("https://kagyuoffice.org/")
+    html = fetch("https://kagyuoffice.org/")
     if not html:
         return
     items = re.findall(r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>', html, re.IGNORECASE)
