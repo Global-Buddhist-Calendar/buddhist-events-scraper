@@ -2,6 +2,7 @@
 Buddhist Events Scraper
 Runs weekly via GitHub Actions.
 Scrapes major Buddhist centre websites and adds new events to Supabase.
+Uses Playwright for JavaScript-heavy sites, urllib for simple HTML pages.
 """
 
 import os
@@ -9,7 +10,7 @@ import json
 import re
 import time
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from html.parser import HTMLParser
@@ -22,9 +23,61 @@ TODAY    = date.today().isoformat()
 ADDED    = 0
 ERRORS   = []
 
-# ── HTTP helper ───────────────────────────────────────────────────────────────
+# ── Playwright setup ──────────────────────────────────────────────────────────
+_playwright = None
+_browser    = None
+_page       = None
+
+def get_page():
+    """Lazy-initialise Playwright browser and return a reusable page."""
+    global _playwright, _browser, _page
+    if _page is not None:
+        return _page
+    try:
+        from playwright.sync_api import sync_playwright
+        _playwright = sync_playwright().start()
+        _browser = _playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        )
+        context = _browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+        )
+        _page = context.new_page()
+        return _page
+    except Exception as e:
+        ERRORS.append(f"Playwright init failed: {e}")
+        return None
+
+def close_browser():
+    """Clean up Playwright resources."""
+    global _playwright, _browser, _page
+    try:
+        if _page:    _page.close()
+        if _browser: _browser.close()
+        if _playwright: _playwright.stop()
+    except Exception:
+        pass
+    _page = _browser = _playwright = None
+
+def fetch_js(url, wait_ms=3000, timeout=30000):
+    """Fetch a JavaScript-rendered page using Playwright."""
+    page = get_page()
+    if not page:
+        return fetch(url)  # fall back to simple fetch
+    try:
+        page.goto(url, timeout=timeout, wait_until="domcontentloaded")
+        page.wait_for_timeout(wait_ms)  # let JS render
+        return page.content()
+    except Exception as e:
+        ERRORS.append(f"fetch_js({url}): {e}")
+        return fetch(url)  # fall back
+
+# ── HTTP helper (simple, no JS) ───────────────────────────────────────────────
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; BuddhistEventsBot/1.0; +https://github.com/Global-Buddhist-Calendar)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
@@ -1520,82 +1573,57 @@ def scrape_garchen_extra(known):
         )
         try_add(ev, known)
 
-# ── 41. Retreat.guru Buddhist Listings (FIXED — uses JSON search API) ─────────
+# ── 41. Retreat.guru Buddhist Listings (Playwright – JS rendered) ─────────────
 def scrape_retreat_guru(known):
     print("\n── Retreat.guru Buddhist Listings ──")
-    # Retreat.guru has a search API that returns JSON
-    categories = ["buddhist", "vipassana", "zen", "tibetan-buddhist", "theravada"]
+    categories = [
+        "https://retreat.guru/be/buddhist-retreats",
+        "https://retreat.guru/be/vipassana-retreats",
+        "https://retreat.guru/be/zen-retreats",
+        "https://retreat.guru/be/tibetan-buddhist-retreats",
+    ]
     seen = set()
-    for cat in categories:
-        url = f"https://retreat.guru/api/programs?tradition[]={cat}&status=published&per_page=50"
-        html = fetch(url)
+    for cat_url in categories:
+        html = fetch_js(cat_url, wait_ms=4000)
         if not html:
             continue
-        try:
-            data = json.loads(html)
-            programs = data if isinstance(data, list) else data.get("programs", data.get("data", []))
-            for p in programs[:30]:
-                title = p.get("title", "").strip()
-                if not title or title in seen or len(title) < 5:
-                    continue
-                seen.add(title)
-                d = p.get("start_date") or p.get("date_start") or p.get("starts_at", "")
-                if d:
-                    d = d[:10]  # take YYYY-MM-DD part
-                if not d or not future_date(d):
-                    continue
-                end_d = p.get("end_date") or p.get("date_end") or p.get("ends_at", "")
-                if end_d:
-                    end_d = end_d[:10]
-                loc = p.get("location", {})
-                if isinstance(loc, dict):
-                    city = loc.get("city", "")
-                    country = loc.get("country", "")
-                    location_str = ", ".join(filter(None, [city, country])) or "Various"
-                else:
-                    location_str = str(loc) if loc else "Various"
-                cont = detect_continent(location_str)
-                source = p.get("url") or p.get("link") or "https://retreat.guru/be/buddhist-retreats"
-                ev = make_event(
-                    title=title, date_str=d, end_date=end_d or None,
-                    location=location_str, continent=cont,
-                    school="Other", etype="Retreat",
-                    description="Buddhist retreat listed on Retreat.guru.",
-                    teacher=p.get("teacher_names") or None,
-                    organization=p.get("center_name") or "retreat.guru listing",
-                    source_url=source,
-                )
-                try_add(ev, known)
-        except (json.JSONDecodeError, AttributeError):
-            # JSON failed — fall back to HTML scraping
-            html2 = fetch(f"https://retreat.guru/be/{cat}-retreats")
-            if not html2:
+        # Retreat.guru renders cards with title, location, date after JS load
+        items = re.findall(
+            r'<h\d[^>]*>\s*<a[^>]*href="(https://retreat\.guru/[^"]+)"[^>]*>([^<]{5,120})</a>',
+            html, re.IGNORECASE
+        )
+        dates = re.findall(
+            r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})',
+            html
+        )
+        locs = re.findall(
+            r'<[^>]*class="[^"]*location[^"]*"[^>]*>([^<]{3,80})</[^>]+>',
+            html, re.IGNORECASE
+        )
+        date_idx = 0
+        loc_idx  = 0
+        for url, title in items[:40]:
+            title = re.sub(r'\s+', ' ', title).strip()
+            if title in seen or len(title) < 5:
                 continue
-            items = re.findall(
-                r'<h\d[^>]*>\s*<a[^>]*href="(https://retreat\.guru/[^"]+)"[^>]*>([^<]{5,120})</a>',
-                html2, re.IGNORECASE
+            seen.add(title)
+            d   = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+            loc = locs[loc_idx].strip() if loc_idx < len(locs) else "Various"
+            date_idx += 1
+            loc_idx  += 1
+            if not d or not future_date(d):
+                continue
+            cont = detect_continent(loc)
+            ev = make_event(
+                title=title, date_str=d, end_date=None,
+                location=loc, continent=cont,
+                school="Other", etype="Retreat",
+                description="Buddhist retreat listed on Retreat.guru.",
+                teacher=None, organization="retreat.guru listing",
+                source_url=url,
             )
-            dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html2)
-            di = 0
-            for rurl, rtitle in items[:20]:
-                rtitle = re.sub(r'\s+', ' ', rtitle).strip()
-                if rtitle in seen or len(rtitle) < 5:
-                    continue
-                seen.add(rtitle)
-                rd = parse_date_str(dates[di]) if di < len(dates) else None
-                di += 1
-                if not rd or not future_date(rd):
-                    continue
-                ev = make_event(
-                    title=rtitle, date_str=rd, end_date=None,
-                    location="Various", continent="Other",
-                    school="Other", etype="Retreat",
-                    description="Buddhist retreat listed on Retreat.guru.",
-                    teacher=None, organization="retreat.guru listing",
-                    source_url=rurl,
-                )
-                try_add(ev, known)
-        time.sleep(2)
+            try_add(ev, known)
+        time.sleep(3)
 
 # ── 57. Palyul Retreat Center ─────────────────────────────────────────────────
 def scrape_palyul(known):
@@ -4272,6 +4300,8 @@ def main():
             time.sleep(2)
         except Exception as e:
             ERRORS.append(f"{scraper.__name__}: {e}")
+
+    close_browser()
 
     print("\n" + "=" * 50)
     print(f"Done. Added {ADDED} new events.")
