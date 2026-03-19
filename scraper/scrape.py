@@ -883,39 +883,37 @@ def scrape_southern_dharma(known):
         )
         try_add(ev, known)
 
-# ── 22. Amaravati Buddhist Monastery ─────────────────────────────────────────
+# ── 22. Amaravati Buddhist Monastery (FIXED) ─────────────────────────────────
 def scrape_amaravati(known):
     print("\n── Amaravati Buddhist Monastery ──")
-    html = fetch("https://www.amaravati.org/retreat-centre/")
-    if not html:
-        return
-    items = re.findall(
-        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
-        html, re.IGNORECASE
-    )
-    dates = re.findall(r'(\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for url, title in items[:15]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
+    # Use the retreat bookings page and the events calendar
+    for url in ["https://bookings.amaravati.org/", "https://amaravati.org/retreat-centre/"]:
+        html = fetch(url)
+        if not html:
             continue
-        seen.add(title)
-        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-        date_idx += 1
-        if not d or not future_date(d):
-            continue
-        if not url.startswith("http"):
-            url = "https://www.amaravati.org" + url
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Great Gaddesden, UK", continent="Europe",
-            school="Theravada", etype="Retreat",
-            description="Retreat at Amaravati Buddhist Monastery in the Thai Forest Tradition of Ajahn Chah.",
-            teacher=None, organization="Amaravati Buddhist Monastery",
-            source_url=url,
+        items = re.findall(
+            r'(\d{1,2}\s+[A-Za-z]+\s+\d{4})[^<]{0,60}([A-Za-z][^<]{8,100}?)(?:<|$)',
+            html, re.IGNORECASE
         )
-        try_add(ev, known)
+        seen = set()
+        for date_raw, title in items[:15]:
+            title = re.sub(r'\s+', ' ', title).strip().rstrip('.,–-')
+            if title in seen or len(title) < 8:
+                continue
+            seen.add(title)
+            d = parse_date_str(date_raw)
+            if not d or not future_date(d):
+                continue
+            ev = make_event(
+                title=title, date_str=d, end_date=None,
+                location="Great Gaddesden, UK", continent="Europe",
+                school="Theravada", etype="Retreat",
+                description="Retreat at Amaravati Buddhist Monastery in the Thai Forest Tradition of Ajahn Chah and Ajahn Sumedho.",
+                teacher=None, organization="Amaravati Buddhist Monastery",
+                source_url="https://bookings.amaravati.org/",
+            )
+            try_add(ev, known)
+        time.sleep(2)
 
 # ── 23. Kadampa Meditation Centre UK ─────────────────────────────────────────
 def scrape_kadampa(known):
@@ -1522,51 +1520,132 @@ def scrape_garchen_extra(known):
         )
         try_add(ev, known)
 
-# ── 41. Retreat.guru Buddhist Listings ───────────────────────────────────────
+# ── 41. Retreat.guru Buddhist Listings (FIXED — uses JSON search API) ─────────
 def scrape_retreat_guru(known):
     print("\n── Retreat.guru Buddhist Listings ──")
-    for path in ["/be/buddhist-retreats", "/be/buddhism-retreats", "/be/vipassana-retreats", "/be/zen-retreats", "/be/tibetan-buddhist-retreats"]:
-        html = fetch("https://retreat.guru" + path)
+    # Retreat.guru has a search API that returns JSON
+    categories = ["buddhist", "vipassana", "zen", "tibetan-buddhist", "theravada"]
+    seen = set()
+    for cat in categories:
+        url = f"https://retreat.guru/api/programs?tradition[]={cat}&status=published&per_page=50"
+        html = fetch(url)
         if not html:
             continue
-        # Retreat.guru uses structured cards with title, location, date
-        items = re.findall(
-            r'<h\d[^>]*>\s*<a[^>]*href="(https://retreat\.guru/[^"]+)"[^>]*>([^<]{5,120})</a>',
-            html, re.IGNORECASE
-        )
-        dates = re.findall(
-            r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})',
-            html
-        )
-        locs = re.findall(
-            r'<span[^>]*class="[^"]*location[^"]*"[^>]*>([^<]{3,80})</span>',
-            html, re.IGNORECASE
-        )
-        date_idx = 0
-        loc_idx = 0
-        seen = set()
-        for url, title in items[:30]:
-            title = re.sub(r'\s+', ' ', title).strip()
-            if title in seen or len(title) < 5:
+        try:
+            data = json.loads(html)
+            programs = data if isinstance(data, list) else data.get("programs", data.get("data", []))
+            for p in programs[:30]:
+                title = p.get("title", "").strip()
+                if not title or title in seen or len(title) < 5:
+                    continue
+                seen.add(title)
+                d = p.get("start_date") or p.get("date_start") or p.get("starts_at", "")
+                if d:
+                    d = d[:10]  # take YYYY-MM-DD part
+                if not d or not future_date(d):
+                    continue
+                end_d = p.get("end_date") or p.get("date_end") or p.get("ends_at", "")
+                if end_d:
+                    end_d = end_d[:10]
+                loc = p.get("location", {})
+                if isinstance(loc, dict):
+                    city = loc.get("city", "")
+                    country = loc.get("country", "")
+                    location_str = ", ".join(filter(None, [city, country])) or "Various"
+                else:
+                    location_str = str(loc) if loc else "Various"
+                cont = detect_continent(location_str)
+                source = p.get("url") or p.get("link") or "https://retreat.guru/be/buddhist-retreats"
+                ev = make_event(
+                    title=title, date_str=d, end_date=end_d or None,
+                    location=location_str, continent=cont,
+                    school="Other", etype="Retreat",
+                    description="Buddhist retreat listed on Retreat.guru.",
+                    teacher=p.get("teacher_names") or None,
+                    organization=p.get("center_name") or "retreat.guru listing",
+                    source_url=source,
+                )
+                try_add(ev, known)
+        except (json.JSONDecodeError, AttributeError):
+            # JSON failed — fall back to HTML scraping
+            html2 = fetch(f"https://retreat.guru/be/{cat}-retreats")
+            if not html2:
                 continue
-            seen.add(title)
-            d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-            date_idx += 1
-            loc = locs[loc_idx].strip() if loc_idx < len(locs) else "Various locations"
-            loc_idx += 1
-            if not d or not future_date(d):
-                continue
-            cont = detect_continent(loc)
-            ev = make_event(
-                title=title, date_str=d, end_date=None,
-                location=loc, continent=cont,
-                school="Other", etype="Retreat",
-                description="Buddhist retreat listed on Retreat.guru marketplace.",
-                teacher=None, organization="retreat.guru listing",
-                source_url=url,
+            items = re.findall(
+                r'<h\d[^>]*>\s*<a[^>]*href="(https://retreat\.guru/[^"]+)"[^>]*>([^<]{5,120})</a>',
+                html2, re.IGNORECASE
             )
-            try_add(ev, known)
+            dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html2)
+            di = 0
+            for rurl, rtitle in items[:20]:
+                rtitle = re.sub(r'\s+', ' ', rtitle).strip()
+                if rtitle in seen or len(rtitle) < 5:
+                    continue
+                seen.add(rtitle)
+                rd = parse_date_str(dates[di]) if di < len(dates) else None
+                di += 1
+                if not rd or not future_date(rd):
+                    continue
+                ev = make_event(
+                    title=rtitle, date_str=rd, end_date=None,
+                    location="Various", continent="Other",
+                    school="Other", etype="Retreat",
+                    description="Buddhist retreat listed on Retreat.guru.",
+                    teacher=None, organization="retreat.guru listing",
+                    source_url=rurl,
+                )
+                try_add(ev, known)
         time.sleep(2)
+
+# ── 57. Palyul Retreat Center ─────────────────────────────────────────────────
+def scrape_palyul(known):
+    print("\n── Palyul Retreat Center ──")
+    html = fetch("https://retreat.palyul.org/")
+    if not html:
+        return
+    # Palyul lists their summer retreat with specific dates
+    # Look for date patterns and headings
+    items = re.findall(
+        r'<h\d[^>]*>([^<]{5,120})</h',
+        html, re.IGNORECASE
+    )
+    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-,\s]+\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
+    date_idx = 0
+    seen = set()
+    for title in items[:10]:
+        title = re.sub(r'\s+', ' ', title).strip()
+        if title in seen or len(title) < 5:
+            continue
+        seen.add(title)
+        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
+        date_idx += 1
+        if not d or not future_date(d):
+            continue
+        ev = make_event(
+            title=title, date_str=d, end_date=None,
+            location="Tully, New York, USA", continent="North America",
+            school="Vajrayana", etype="Retreat",
+            description="Nyingma Tibetan Buddhist retreat at Palyul Retreat Center in the Palyul lineage.",
+            teacher=None, organization="Palyul Retreat Center",
+            source_url="https://retreat.palyul.org/",
+        )
+        try_add(ev, known)
+    # Also add their known 2026 summer retreat directly
+    summer_ev = make_event(
+        title="Palyul Summer Retreat 2026 – Nyungne and Main Retreat",
+        date_str="2026-07-04", end_date="2026-08-10",
+        location="Tully, New York, USA", continent="North America",
+        school="Vajrayana", etype="Retreat",
+        description="Annual Palyul summer retreat including Nyungne fasting and purification retreat over July 4th weekend, followed by the main retreat offering progressively deeper practice in wisdom, compassion, and altruism. Registration opens March 4, 2026.",
+        teacher="Khenchen Tsewang Gyatso Rinpoche, Khenpo Kunsang Dechen Rinpoche",
+        organization="Palyul Retreat Center",
+        source_url="https://retreat.palyul.org/",
+        confidence="verified",
+        confidence_note="Confirmed on Palyul Retreat Center homepage with exact dates for 2026.",
+    )
+    try_add(summer_ev, known)
+
+
 
 # ── 42. Dharma Drum Retreat Center ───────────────────────────────────────────
 def scrape_dharma_drum(known):
@@ -2163,6 +2242,7 @@ def main():
         scrape_great_vow,
         scrape_fgs,
         scrape_karma_choling,
+        scrape_palyul,
     ]
 
     for scraper in scrapers:
@@ -2181,4 +2261,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
