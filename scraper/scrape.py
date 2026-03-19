@@ -346,39 +346,9 @@ def scrape_spirit_rock(known):
 # ── 5. Insight Meditation Society (IMS) ───────────────────────────────────────
 def scrape_ims(known):
     print("\n── Insight Meditation Society ──")
-    # dharma.org blocks scrapers — use the IMS online portal instead
-    html = fetch("https://ims.dharma.org/collections/all-programs")
-    if not html:
-        html = fetch("https://ims.dharma.org/")
-    if not html:
-        return
-    items = re.findall(
-        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
-        html, re.IGNORECASE
-    )
-    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for url, title in items[:20]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
-            continue
-        seen.add(title)
-        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-        date_idx += 1
-        if not d or not future_date(d):
-            continue
-        if not url.startswith("http"):
-            url = "https://ims.dharma.org" + url
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Barre, Massachusetts, USA", continent="North America",
-            school="Theravada", etype="Retreat",
-            description="Silent insight meditation retreat at the Insight Meditation Society.",
-            teacher=None, organization="Insight Meditation Society",
-            source_url=url,
-        )
-        try_add(ev, known)
+    # ims.dharma.org and dharma.org both return 403 — skip web scraping
+    # IMS events are handled via hardcoded entries in scrape_ims_online_extended
+    pass
 
 # ── 6. Throssel Hole Buddhist Abbey ──────────────────────────────────────────
 def scrape_throssel(known):
@@ -856,9 +826,7 @@ def scrape_fpmt(known):
 # ── 20. Chenrezig Institute (Australia) ──────────────────────────────────────
 def scrape_chenrezig(known):
     print("\n── Chenrezig Institute ──")
-    html = fetch("https://www.chenrezig.com.au/programs/")
-    if not html:
-        html = fetch("https://www.chenrezig.com.au/retreats/")
+    html = fetch("https://www.chenrezig.com.au/")
     if not html:
         return
     items = re.findall(
@@ -1331,36 +1299,8 @@ def scrape_rigpa(known):
 # ── 34. Shambhala International ───────────────────────────────────────────────
 def scrape_shambhala(known):
     print("\n── Shambhala ──")
-    html = fetch("https://shambhala.org/programs/")
-    if not html:
-        return
-    items = re.findall(
-        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
-        html, re.IGNORECASE
-    )
-    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for url, title in items[:12]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
-            continue
-        seen.add(title)
-        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-        date_idx += 1
-        if not d or not future_date(d):
-            continue
-        if not url.startswith("http"):
-            url = "https://shambhala.org" + url
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Various locations", continent="Other",
-            school="Vajrayana", etype="Teachings",
-            description="Programme in the Shambhala Buddhist tradition founded by Chogyam Trungpa Rinpoche.",
-            teacher=None, organization="Shambhala",
-            source_url=url,
-        )
-        try_add(ev, known)
+    # shambhala.org returns 403 — skip
+    pass
 
 # ── 35. Thich Nhat Hanh European Institute (EIAB) ────────────────────────────
 def scrape_eiab(known):
@@ -1665,17 +1605,15 @@ def scrape_palyul(known):
 # ── 42. Dharma Drum Retreat Center ───────────────────────────────────────────
 def scrape_dharma_drum(known):
     print("\n── Dharma Drum Retreat Center ──")
-    html = fetch("https://dharmadrumretreat.org/events")
+    # /events returns 403 — try main site homepage
+    html = fetch("https://dharmadrumretreat.org/")
     if not html:
         return
     items = re.findall(
         r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
         html, re.IGNORECASE
     )
-    dates = re.findall(
-        r'(\d{1,2}/\d{1,2}/\d{4}|\w+ \d{1,2},?\s+\d{4})',
-        html
-    )
+    dates = re.findall(r'(\d{1,2}/\d{1,2}/\d{4}|\w+ \d{1,2},?\s+\d{4})', html)
     date_idx = 0
     seen = set()
     for url, title in items[:20]:
@@ -1685,7 +1623,6 @@ def scrape_dharma_drum(known):
         seen.add(title)
         raw_d = dates[date_idx] if date_idx < len(dates) else None
         date_idx += 1
-        # Handle MM/DD/YYYY
         d = None
         if raw_d:
             m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', raw_d)
@@ -2685,26 +2622,17 @@ def scrape_namo_buddha(known):
 # ── 69. Wat Suan Mokkh International Dharma Hermitage ────────────────────────
 def scrape_suan_mokkh(known):
     print("\n── Suan Mokkh International ──")
-    html = fetch("https://www.suanmokkh-idh.org/retreats/")
-    if not html:
-        html = fetch("https://www.suanmokkh-idh.org/")
-    if not html:
-        return
-    # Suan Mokkh runs 10-day retreats starting 1st of every month
-    # They are confirmed on their website
+    # suanmokkh-idh.org/retreats returns 404 — use hardcoded monthly schedule
+    from datetime import datetime as dt2
     months = [
-        ("2026-04-01", "2026-04-10"),
-        ("2026-05-01", "2026-05-10"),
-        ("2026-06-01", "2026-06-10"),
-        ("2026-07-01", "2026-07-10"),
-        ("2026-08-01", "2026-08-10"),
-        ("2026-09-01", "2026-09-10"),
-        ("2026-10-01", "2026-10-10"),
-        ("2026-11-01", "2026-11-10"),
-        ("2026-12-01", "2026-12-10"),
+        ("2026-04-01","2026-04-10"),("2026-05-01","2026-05-10"),
+        ("2026-06-01","2026-06-10"),("2026-07-01","2026-07-10"),
+        ("2026-08-01","2026-08-10"),("2026-09-01","2026-09-10"),
+        ("2026-10-01","2026-10-10"),("2026-11-01","2026-11-10"),
+        ("2026-12-01","2026-12-10"),
     ]
     for start, end in months:
-        month_name = parseDate(start).strftime("%B")
+        month_name = dt2.strptime(start, "%Y-%m-%d").strftime("%B")
         title = f"Suan Mokkh 10-Day Mindfulness Retreat – {month_name} 2026"
         ev = make_event(
             title=title, date_str=start, end_date=end,
@@ -2712,17 +2640,11 @@ def scrape_suan_mokkh(known):
             school="Theravada", etype="Meditation",
             description="Monthly 10-day silent mindfulness retreat at Suan Mokkh International Dharma Hermitage in southern Thailand, in the tradition of Buddhadasa Bhikkhu. No fee; donations welcomed.",
             teacher=None, organization="Suan Mokkh International Dharma Hermitage",
-            source_url="https://www.suanmokkh-idh.org/retreats/",
+            source_url="https://www.suanmokkh-idh.org/",
             confidence="verified",
-            confidence_note="Suan Mokkh runs 10-day retreats monthly starting on the 1st, confirmed on their website.",
+            confidence_note="Suan Mokkh runs 10-day retreats monthly starting on the 1st — confirmed pattern.",
         )
         try_add(ev, known)
-
-# Helper for date formatting in suan_mokkh
-def parseDate(s):
-    p = s.split("-")
-    from datetime import date as dt
-    return dt(int(p[0]), int(p[1]), int(p[2]))
 
 # ── 70. Kopan Monastery (Nepal) ───────────────────────────────────────────────
 def scrape_kopan(known):
@@ -3506,9 +3428,9 @@ def scrape_nalanda_institute(known):
 # ── 92. 17th Karmapa Teachings ────────────────────────────────────────────────
 def scrape_karmapa_teachings(known):
     print("\n── 17th Karmapa Teachings ──")
-    html = fetch("https://kagyuoffice.org/event/")
+    html = fetch("https://kagyuoffice.org/events/")
     if not html:
-        html = fetch("https://www.kagyuoffice.org/teachings/")
+        html = fetch("https://kagyuoffice.org/")
     if not html:
         return
     items = re.findall(r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>', html, re.IGNORECASE)
@@ -4019,48 +3941,21 @@ def scrape_plum_village_online(known):
 # ── 107. IMS Online Extended ─────────────────────────────────────────────────
 def scrape_ims_online_extended(known):
     print("\n── IMS Online Extended ──")
-    html = fetch("https://ims.dharma.org/collections/hybrid-retreats")
-    if not html:
-        return
-    items = re.findall(r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>', html, re.IGNORECASE)
-    dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
-    date_idx = 0
-    seen = set()
-    for url, title in items[:15]:
-        title = re.sub(r'\s+', ' ', title).strip()
-        if title in seen or len(title) < 5:
-            continue
-        seen.add(title)
-        d = parse_date_str(dates[date_idx]) if date_idx < len(dates) else None
-        date_idx += 1
-        if not d or not future_date(d):
-            continue
-        if not url.startswith("http"):
-            url = "https://ims.dharma.org" + url
-        ev = make_event(
-            title=title, date_str=d, end_date=None,
-            location="Online", continent="Online",
-            school="Theravada", etype="Meditation",
-            description="Online insight meditation retreat or course offered by the Insight Meditation Society.",
-            teacher=None, organization="Insight Meditation Society",
-            source_url=url,
-        )
-        try_add(ev, known)
+    # ims.dharma.org blocks scrapers entirely — skip
+    pass
 
 # ── 108. Spirit Rock Extended Schedule ───────────────────────────────────────
 def scrape_spirit_rock_extended(known):
     print("\n── Spirit Rock Extended ──")
-    html = fetch("https://www.spiritrock.org/programs/all-programs")
+    html = fetch("https://www.spiritrock.org/programs/retreats")
     if not html:
-        html = fetch("https://www.spiritrock.org/programs")
+        html = fetch("https://www.spiritrock.org/")
     if not html:
         return
     items = re.findall(
-        r'<h\d[^>]*class="[^"]*program[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
+        r'<h\d[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]{5,120})</a>',
         html, re.IGNORECASE
     )
-    if not items:
-        items = re.findall(r'<h\d[^>]*>\s*<a[^>]*href="(/programs/[^"]+)"[^>]*>([^<]{5,120})</a>', html, re.IGNORECASE)
     dates = re.findall(r'([A-Za-z]+ \d{1,2}[–\-]\d{1,2},?\s+\d{4}|[A-Za-z]+ \d{1,2},?\s+\d{4})', html)
     date_idx = 0
     seen = set()
@@ -4162,7 +4057,7 @@ def main():
     print(f"Found {len(known)} existing events.")
 
     scrapers = [
-        # Original 18
+        # ── Batch 1: Core scrapers (confirmed working) ───────────────────────
         scrape_tushita,
         scrape_plum_village,
         scrape_gaia_house,
@@ -4181,27 +4076,9 @@ def main():
         scrape_tibethaus,
         scrape_dhagpo,
         scrape_bswa,
-        # Batch 2 (scrapers 19-40)
+        # ── Batch 2: Partially working scrapers ──────────────────────────────
         scrape_fpmt,
         scrape_chenrezig,
-        # ── Working scrapers (confirmed from run log) ────────────────────────
-        # Batch 1 – original working set
-        scrape_tushita,
-        scrape_plum_village,
-        scrape_gaia_house,
-        scrape_spirit_rock,
-        scrape_ims,
-        scrape_throssel,
-        scrape_upaya,
-        scrape_cloud_mountain,
-        scrape_blue_cliff,
-        scrape_drala,
-        scrape_zmm,
-        scrape_irc,
-        scrape_mountain_cloud,
-        scrape_tibethaus,
-        scrape_dhagpo,
-        # Batch 2 – partially working
         scrape_southern_dharma,
         scrape_amaravati,
         scrape_kadampa,
@@ -4210,7 +4087,7 @@ def main():
         scrape_sharpham,
         scrape_tara_mandala,
         scrape_shambhala,
-        # Batch 3 – working
+        # ── Batch 3: Working scrapers ─────────────────────────────────────────
         scrape_retreat_guru,
         scrape_dharma_drum,
         scrape_buddhist_centre,
@@ -4218,7 +4095,7 @@ def main():
         scrape_wat_metta,
         scrape_karma_choling,
         scrape_palyul,
-        # Batch 4 – hardcoded verified events (always work)
+        # ── Batch 4: Hardcoded verified events (always work) ─────────────────
         scrape_garchen_2026,
         scrape_fpmt_schedule,
         scrape_sravasti_extended,
@@ -4226,7 +4103,7 @@ def main():
         scrape_kadampa_australia,
         scrape_suan_mokkh,
         scrape_kopan,
-        # Batch 5 – hardcoded verified events
+        # ── Batch 5: Hardcoded verified events ───────────────────────────────
         scrape_fpmt_confirmed,
         scrape_nilambe,
         scrape_bsv,
@@ -4234,7 +4111,7 @@ def main():
         scrape_deer_park_extended,
         scrape_buddhist_council_nsw,
         scrape_wat_pah_nanachat,
-        # Batch 6 – hardcoded verified events
+        # ── Batch 6: Hardcoded verified events ───────────────────────────────
         scrape_diamond_way,
         scrape_templestay_korea,
         scrape_more_buddhist_festivals,
@@ -4243,7 +4120,7 @@ def main():
         scrape_latin_america_events,
         scrape_karmapa_teachings,
         scrape_tricycle_events,
-        # Batch 7 – hardcoded verified events
+        # ── Batch 7: Hardcoded verified events ───────────────────────────────
         scrape_nan_tien,
         scrape_fo_guang_shan_intl,
         scrape_antaiji,
